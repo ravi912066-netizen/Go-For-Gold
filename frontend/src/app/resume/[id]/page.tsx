@@ -3,6 +3,10 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import API from '@/lib/api';
 
+export function generateStaticParams() {
+    return [];
+}
+
 export default function ResumePage() {
     const { id } = useParams<{ id: string }>();
     const router = useRouter();

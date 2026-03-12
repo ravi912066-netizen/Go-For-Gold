@@ -5,6 +5,10 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import API from '@/lib/api';
 
+export function generateStaticParams() {
+    return [];
+}
+
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), { ssr: false });
 
 const STARTER: Record<string, string> = {
