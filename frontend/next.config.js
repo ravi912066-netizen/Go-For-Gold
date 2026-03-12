@@ -1,16 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+    output: 'export',
+    basePath: '/Go-For-Gold',
+    assetPrefix: '/Go-For-Gold/',
     images: {
+        unoptimized: true,
         domains: ['api.dicebear.com', 'avatars.githubusercontent.com'],
     },
-    async rewrites() {
-        return [
-            {
-                source: '/api/:path*',
-                destination: 'http://localhost:4000/api/:path*',
-            },
-        ];
-    },
+    // Note: rewrites do not work with output: 'export'
 };
 
 module.exports = nextConfig;
