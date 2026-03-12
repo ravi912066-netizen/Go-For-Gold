@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-    title: 'GO FOR GOLD | Competitive Programming Platform',
-    description: 'Practice coding daily, track streaks, compete on leaderboards, and get AI-powered help.',
+    title: 'GO FOR GOLD',
+    description: 'Champions League',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
