@@ -1,0 +1,187 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id            Int      @id @default(autoincrement())
+  email         String   @unique
+  password      String
+  name          String
+  college       String?
+  bio           String?
+  photoUrl      String?
+  githubUrl     String?
+  role          String   @default("student") // "student" | "admin"
+  xp            Int      @default(0)
+  currentStreak Int      @default(0)
+  longestStreak Int      @default(0)
+  lastSolvedAt  DateTime?
+  createdAt     DateTime @default(now())
+
+  submissions     Submission[]
+  externalProfile ExternalProfile?
+  badges          UserBadge[]
+  leaderboard     LeaderboardEntry?
+  enrollments     Enrollment[]
+}
+
+model Question {
+  id           Int      @id @default(autoincrement())
+  title        String
+  slug         String   @unique
+  statement    String
+  difficulty   String   // "Easy" | "Medium" | "Hard"
+  tags         String   // JSON array string
+  timeLimit    Int      @default(2)
+  memoryLimit  Int      @default(256)
+  starterCode  String?
+  testcases    String   // JSON array string
+  isQotd       Boolean  @default(false)
+  qotdDate     DateTime?
+  deadline     DateTime?
+  courseId     Int?
+  course       Course?  @relation(fields: [courseId], references: [id])
+  createdAt    DateTime @default(now())
+
+  submissions  Submission[]
+  assignments  AssignmentQuestion[]
+}
+
+model Submission {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  questionId Int
+  code       String
+  language   String
+  status     String   // "Accepted" | "Wrong Answer" | "TLE" | "Runtime Error" | "Pending"
+  runtime    Float?
+  memory     Float?
+  output     String?
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id])
+  question   Question @relation(fields: [questionId], references: [id])
+}
+
+model Course {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String?
+  icon        String?
+  createdAt   DateTime @default(now())
+
+  questions   Question[]
+  assignments Assignment[]
+  materials   Material[]
+  enrollments Enrollment[]
+}
+
+model Enrollment {
+  id       Int  @id @default(autoincrement())
+  userId   Int
+  courseId Int
+  user     User   @relation(fields: [userId], references: [id])
+  course   Course @relation(fields: [courseId], references: [id])
+
+  @@unique([userId, courseId])
+}
+
+model Assignment {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String?
+  courseId    Int
+  startTime   DateTime?
+  deadline    DateTime?
+  difficulty  String?
+  tags        String?
+  createdAt   DateTime @default(now())
+
+  course      Course   @relation(fields: [courseId], references: [id])
+  questions   AssignmentQuestion[]
+}
+
+model AssignmentQuestion {
+  id           Int        @id @default(autoincrement())
+  assignmentId Int
+  questionId   Int
+  assignment   Assignment @relation(fields: [assignmentId], references: [id])
+  question     Question   @relation(fields: [questionId], references: [id])
+}
+
+model Material {
+  id        Int      @id @default(autoincrement())
+  title     String
+  type      String   // "pdf" | "doc" | "slide" | "link"
+  url       String
+  courseId  Int
+  course    Course   @relation(fields: [courseId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model ExternalProfile {
+  id               Int     @id @default(autoincrement())
+  userId           Int     @unique
+  codeforcesId     String?
+  leetcodeId       String?
+  atcoderId        String?
+  cfRating         Int?
+  cfRank           String?
+  cfContests       Int?
+  lcSolved         Int?
+  lcEasy           Int?
+  lcMedium         Int?
+  lcHard           Int?
+  acRating         Int?
+  acContests       Int?
+  lastSynced       DateTime?
+
+  user             User    @relation(fields: [userId], references: [id])
+}
+
+model Contest {
+  id          Int      @id @default(autoincrement())
+  title       String
+  startTime   DateTime
+  duration    Int      // in minutes
+  problems    String   // JSON array of question IDs
+  isActive    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model LeaderboardEntry {
+  id             Int  @id @default(autoincrement())
+  userId         Int  @unique
+  totalSolved    Int  @default(0)
+  totalXp        Int  @default(0)
+  contestScore   Int  @default(0)
+  assignmentDone Int  @default(0)
+  globalRank     Int?
+  user           User @relation(fields: [userId], references: [id])
+}
+
+model Badge {
+  id          Int    @id @default(autoincrement())
+  key         String @unique
+  name        String
+  description String
+  icon        String
+
+  users       UserBadge[]
+}
+
+model UserBadge {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  badgeId   Int
+  awardedAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+  badge     Badge    @relation(fields: [badgeId], references: [id])
+
+  @@unique([userId, badgeId])
+}
