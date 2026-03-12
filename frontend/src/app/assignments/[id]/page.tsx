@@ -36,6 +36,11 @@ export default function AssignmentDetailPage() {
     const [running, setRunning] = useState(false);
     const [submitting, setSubmitting] = useState(false);
 
+    // Expected Output Generator
+    const [genInput, setGenInput] = useState('');
+    const [genOutput, setGenOutput] = useState('');
+    const [genLoading, setGenLoading] = useState(false);
+
     const [proctorStarted, setProctorStarted] = useState(false);
     const [alertMsg, setAlertMsg] = useState('');
     const [showHint, setShowHint] = useState(false);
@@ -142,6 +147,16 @@ export default function AssignmentDetailPage() {
         } finally { setRunning(false); }
     };
 
+    const handleGenerateExpected = async () => {
+        if (!genInput) return;
+        setGenLoading(true);
+        try {
+            const { data } = await API.post('/execute', { code, language: lang, input: genInput });
+            setGenOutput(data.output || data.error || 'Generated Successfully');
+        } catch { setGenOutput('Generation failed'); }
+        finally { setGenLoading(false); }
+    };
+
     const handleSubmitCode = async () => {
         setSubmitting(true);
         try {
@@ -193,195 +208,250 @@ export default function AssignmentDetailPage() {
     }
 
     return (
-        <div ref={containerRef} className="min-h-screen bg-[#0a0e1a] flex flex-col overflow-hidden text-slate-300 select-none">
-            {/* Header */}
-            <header className="h-14 bg-[#111827] border-b border-[#1e2d45] flex items-center justify-between px-6 shrink-0 z-50">
+        <div ref={containerRef} className="min-h-screen bg-[#0d1117] flex flex-col overflow-hidden select-none">
+            {/* Header: Newton Style High-Fidelity Black Breadcrumb */}
+            <header className="h-12 bg-[#0d1117] border-b border-[#2d2f39] flex items-center justify-between px-4 shrink-0 z-50">
                 <div className="flex items-center gap-4">
-                    <button onClick={() => router.back()} className="text-slate-500 hover:text-white transition-colors">← Back</button>
-                    <span className="text-slate-700">|</span>
-                    <h1 className="font-bold text-white text-sm tracking-wide truncate max-w-[300px]">{assignment.title} - {selectedQ?.title}</h1>
+                    <button onClick={() => router.back()} className="text-slate-400 hover:text-white transition-colors flex items-center gap-2 text-xs font-bold uppercase tracking-tight">
+                        <span className="text-lg">←</span> Back
+                    </button>
+                    <div className="h-4 w-px bg-[#2d2f39]" />
+                    <h1 className="font-bold text-slate-100 text-[13px] tracking-tight truncate max-w-[250px]">{selectedQ?.title}</h1>
                 </div>
-                <div className="flex items-center gap-3">
+
+                <div className="flex items-center gap-4">
                     {assignment.reward && (
-                        <div className="flex items-center gap-2 bg-amber-500/10 px-3 py-1.5 rounded-xl border border-amber-500/20">
-                            <span className="text-amber-500 text-xs font-black tracking-widest">{assignment.reward}</span>
+                        <div className="flex items-center gap-1.5 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20">
+                            <span className="text-amber-500 text-[10px] font-black uppercase tracking-widest">{assignment.reward}</span>
                         </div>
                     )}
-                    <button onClick={handleRun} disabled={running} className="flex items-center gap-2 text-slate-400 hover:text-white font-bold text-xs uppercase px-4 py-2 rounded-xl transition-all">
-                        {running ? '...' : '▶'} Run
+                    <button onClick={handleRun} disabled={running} className="flex items-center gap-2 text-slate-400 hover:text-white font-bold text-[11px] uppercase px-4 py-1.5 rounded-md transition-all border border-[#2d2f39] bg-[#161b22]">
+                        {running ? '...' : 'Run'}
                     </button>
-                    <button onClick={handleSubmitCode} disabled={submitting} className="bg-blue-600 hover:bg-blue-500 text-white font-black text-xs uppercase px-6 py-2 rounded-xl shadow-lg transition-all active:scale-95">
+                    <button onClick={handleSubmitCode} disabled={submitting} className="bg-blue-600 hover:bg-blue-500 text-white font-black text-[11px] uppercase px-6 py-1.5 rounded-md shadow-sm transition-all active:scale-95">
                         {submitting ? '...' : 'Submit'}
                     </button>
-                    {assignment.isProctored && (
-                        <div className="ml-4 flex items-center gap-2">
-                            <video ref={videoRef} autoPlay playsInline muted className="w-10 h-10 rounded-lg bg-black object-cover border border-amber-500/30" />
-                        </div>
-                    )}
                 </div>
             </header>
 
             {/* Alert Banner */}
-            {alertMsg && <div className="bg-red-600 text-white text-[10px] font-black py-1.5 text-center animate-pulse uppercase tracking-widest">{alertMsg}</div>}
+            {alertMsg && <div className="bg-red-600 text-white text-[10px] font-black py-1 text-center animate-pulse uppercase tracking-widest">{alertMsg}</div>}
 
-            {/* Main Content */}
-            <div className="flex-1 flex overflow-hidden bg-[#0d1117]">
-                {/* Left Panel: Question Content */}
-                <div className="w-[450px] border-r border-[#1e2d45] flex flex-col shrink-0 bg-[#0d1117]">
-                    <div className="flex border-b border-[#1e2d45] bg-[#161b22]">
-                        <button className="px-6 py-3 text-[10px] font-black uppercase tracking-[0.2em] text-amber-500 border-b-2 border-amber-500">Question</button>
+            <div className="flex-1 flex overflow-hidden">
+                {/* Slim Icon Sidebar (Far Left) */}
+                <div className="w-[60px] bg-[#0d1117] border-r border-[#2d2f39] flex flex-col items-center py-4 gap-4 shrink-0">
+                    <div className="w-10 h-10 bg-[#161b22] rounded-lg flex items-center justify-center text-blue-500 border border-blue-500/20 cursor-pointer shadow-lg shadow-blue-500/5">
+                        <span className="text-xl">Q</span>
                     </div>
-                    <div className="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar">
-                        {selectedQ ? (
-                            <>
-                                <div>
-                                    <h2 className="text-2xl font-black text-white mb-2">{selectedQ.title}</h2>
-                                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
-                                        Time Limit: {selectedQ.timeLimit}s | Memory: {selectedQ.memoryLimit}MB
-                                    </p>
-                                </div>
-                                <div className="prose prose-invert prose-sm max-w-none text-slate-300 leading-relaxed font-medium">
-                                    {selectedQ.statement.split('\n\n').map((p: string, i: number) => (
-                                        <p key={i} dangerouslySetInnerHTML={{
-                                            __html: p.replace(/\*\*(.*?)\*\*/g, '<strong class="text-white">$1</strong>').replace(/\n/g, '<br/>')
-                                        }} />
-                                    ))}
-                                </div>
-                                {JSON.parse(selectedQ.testcases || '[]').slice(0, 1).map((tc: any, i: number) => (
-                                    <div key={i} className="mt-8 pt-8 border-t border-[#1e2d45]">
-                                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Example Case</p>
-                                        <div className="bg-black/30 rounded-2xl p-4 font-mono text-sm space-y-4">
-                                            <div>
-                                                <div className="text-[9px] text-slate-600 font-bold mb-1 uppercase tracking-widest">Input</div>
-                                                <div className="text-green-400">{tc.input}</div>
-                                            </div>
-                                            <div>
-                                                <div className="text-[9px] text-slate-600 font-bold mb-1 uppercase tracking-widest">Output</div>
-                                                <div className="text-amber-400">{tc.output}</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </>
-                        ) : (
-                            <div className="flex items-center justify-center h-full text-slate-600 text-sm italic">Select a question to start</div>
-                        )}
-
-                        {/* Question Switcher at bottom */}
-                        <div className="mt-20 pt-10 border-t border-[#1e2d45]">
-                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Assignment Progress</p>
-                            <div className="grid grid-cols-4 gap-3">
-                                {assignment.questions?.map((q: any, i: number) => (
-                                    <button key={q.id} onClick={() => handleSelectQ(q.question)}
-                                        className={`h-12 rounded-xl font-bold transition-all border ${selectedQ?.id === q.questionId ? 'bg-amber-500 text-black border-amber-500 shadow-lg shadow-amber-500/20' : 'bg-[#111827] text-slate-500 border-[#1e2d45] hover:border-slate-500'}`}>
-                                        {i + 1}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
+                    <div className="w-10 h-10 hover:bg-[#161b22] rounded-lg flex items-center justify-center text-slate-500 cursor-pointer transition-colors">
+                        <span className="text-xl">☰</span>
+                    </div>
+                    <div className="w-10 h-10 hover:bg-[#161b22] rounded-lg flex items-center justify-center text-slate-500 cursor-pointer transition-colors">
+                        <span className="text-xl">⚙</span>
                     </div>
                 </div>
 
-                {/* Right Panel: Compiler */}
-                <div className="flex-1 flex flex-col relative bg-black">
-                    {/* Editor Header */}
-                    <div className="h-12 bg-[#161b22] border-b border-[#1e2d45] flex items-center px-6 gap-6 shrink-0">
-                        <div className="flex items-center gap-2 text-xs font-bold text-slate-400">
-                            {LANG_LABELS[lang]}
+                {/* Main Content Area */}
+                <div className="flex-1 flex overflow-hidden bg-white">
+                    {/* Left Panel: Question Content (Light Mode) */}
+                    <div className="w-[40%] min-w-[400px] border-r border-slate-200 flex flex-col shrink-0 bg-white relative">
+                        <div className="h-10 bg-slate-50 border-b border-slate-200 flex items-center px-4">
+                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Question</span>
                         </div>
-                    </div>
+                        <div className="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar-light">
+                            {selectedQ ? (
+                                <>
+                                    <div className="prose prose-slate prose-sm max-w-none text-slate-600 leading-relaxed font-medium space-y-4">
+                                        <p className="border-b border-slate-100 pb-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Description</p>
+                                        <div dangerouslySetInnerHTML={{
+                                            __html: selectedQ.statement.replace(/\*\*(.*?)\*\*/g, '<strong class="text-slate-900 font-black">$1</strong>').replace(/\n/g, '<br/>')
+                                        }} />
+                                    </div>
 
-                    {/* Monaco Editor */}
-                    <div className="flex-1 min-h-0">
-                        <MonacoEditor
-                            height="100%"
-                            language={lang}
-                            value={code}
-                            onChange={(v) => setCode(v || '')}
-                            theme="vs-dark"
-                            options={{
-                                fontSize: 15, minimap: { enabled: false },
-                                lineNumbers: 'on', scrollBeyondLastLine: false,
-                                automaticLayout: true, tabSize: 4, wordWrap: 'on',
-                                padding: { top: 20 },
-                            }}
-                        />
-                    </div>
+                                    {/* Expected Output Generator Utility */}
+                                    <div className="pt-8 border-t border-slate-100 mt-8">
+                                        <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.25em] mb-4">Generated Expected Output</h3>
+                                        <div className="space-y-4">
+                                            <div>
+                                                <p className="text-[9px] font-bold text-slate-400 uppercase mb-1.5 ml-1">Insert Input</p>
+                                                <textarea
+                                                    value={genInput}
+                                                    onChange={(e) => setGenInput(e.target.value)}
+                                                    className="w-full h-24 bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-700 font-mono text-[13px] placeholder-slate-300 focus:ring-1 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                                    placeholder="Paste input here..."
+                                                />
+                                            </div>
+                                            <button
+                                                onClick={handleGenerateExpected}
+                                                disabled={genLoading || !genInput}
+                                                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] uppercase h-10 rounded-lg transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
+                                            >
+                                                {genLoading ? 'Generating...' : 'Generate Expected Output >'}
+                                            </button>
+                                            {genOutput && (
+                                                <div className="animate-fade-in">
+                                                    <p className="text-[9px] font-bold text-slate-400 uppercase mb-1.5 ml-1">Expected Output</p>
+                                                    <div className="bg-slate-50 text-slate-800 font-mono text-[12px] p-4 rounded-xl border border-slate-200 overflow-x-auto">
+                                                        {genOutput}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
 
-                    {/* I/O Tabs */}
-                    <div className="bg-[#0d1117] border-t border-[#1e2d45]" style={{ height: '220px' }}>
-                        <div className="flex bg-[#161b22] px-6">
-                            {(['input', 'output', 'error'] as const).map(t => (
-                                <button key={t} onClick={() => setTab(t)}
-                                    className={`px-4 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${tab === t ? 'text-amber-500 border-b-2 border-amber-500' : 'text-slate-600 hover:text-slate-400'}`}>
-                                    {t}
-                                </button>
-                            ))}
-                        </div>
-                        <div className="p-6 h-[calc(100%-40px)] overflow-y-auto font-mono text-sm leading-relaxed">
-                            {tab === 'input' && (
-                                <textarea className="w-full h-full bg-transparent resize-none outline-none border-none text-slate-300 placeholder-slate-800"
-                                    placeholder="Enter your input here..." value={input} onChange={e => setInput(e.target.value)} />
+                                    {/* Question Selection */}
+                                    <div className="mt-10 pt-8 border-t border-slate-100">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase mb-4">Select Question</p>
+                                        <div className="flex flex-wrap gap-2">
+                                            {assignment.questions?.map((q: any, i: number) => (
+                                                <button key={q.id} onClick={() => handleSelectQ(q.question)}
+                                                    className={`w-8 h-8 rounded-lg font-black text-[11px] transition-all border ${selectedQ?.id === q.questionId ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'}`}>
+                                                    {i + 1}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="flex items-center justify-center h-full text-slate-300 text-sm">Select a question</div>
                             )}
-                            {tab === 'output' && <div className="text-green-400 whitespace-pre-wrap">{output || (running ? 'Executing...' : 'Ready.')}</div>}
-                            {tab === 'error' && <div className="text-red-500 whitespace-pre-wrap">{err || 'Clean.'}</div>}
                         </div>
+                        {/* Drag Handle Mockup */}
+                        <div className="absolute right-[-1px] top-0 bottom-0 w-[2px] bg-slate-200 cursor-col-resize hover:bg-blue-400 transition-colors z-20" />
                     </div>
 
-                    {/* Floating AI Chat Assistant (Newton Style) */}
-                    <div className="fixed bottom-6 right-6 z-[60] flex flex-col items-end gap-3 pointer-events-none">
-                        {showHint && (
-                            <div className="pointer-events-auto bg-[#161b22] border border-[#1e2d45] w-96 max-h-[500px] overflow-hidden rounded-[2rem] shadow-2xl animate-chat-popup flex flex-col">
-                                <div className="p-5 border-b border-[#1e2d45] flex items-center justify-between bg-gradient-to-r from-[#161b22] to-[#0d1117]">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-lg">🤖</div>
-                                        <div>
-                                            <p className="font-black text-white text-xs uppercase tracking-widest">AI AIssistant</p>
-                                            <p className="text-[10px] text-green-500 font-bold">Online • Ready to help</p>
-                                        </div>
-                                    </div>
-                                    <button onClick={() => setShowHint(false)} className="text-slate-500 hover:text-white transition-colors">✕</button>
-                                </div>
-                                <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-[#0d1117]/50">
-                                    <div className="flex gap-3">
-                                        <div className="bg-[#1e2d45] text-slate-200 p-4 rounded-2xl rounded-tl-none text-xs leading-relaxed max-w-[85%] border border-[#1e2d45]">
-                                            Hello! I'm your AI tutor. How can I help you with **{selectedQ?.title}**? I can give you hints or explain the problem statement.
-                                        </div>
-                                    </div>
-                                    {aiLoading ? (
-                                        <div className="flex gap-3">
-                                            <div className="bg-amber-500/10 text-amber-500 p-3 rounded-2xl rounded-tl-none flex items-center gap-2 border border-amber-500/20">
-                                                <span className="w-4 h-4 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
-                                                <span className="text-[10px] font-black uppercase tracking-widest">Bot is thinking...</span>
-                                            </div>
-                                        </div>
-                                    ) : aiResponse && (
-                                        <div className="flex gap-3">
-                                            <div className="bg-amber-500 text-black p-4 rounded-2xl rounded-tl-none text-xs font-bold leading-relaxed max-w-[85%] shadow-lg shadow-amber-500/10">
-                                                {aiResponse}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="p-4 bg-[#161b22] border-t border-[#1e2d45] flex gap-2">
-                                    <button onClick={fetchHint} disabled={aiLoading} className="flex-1 bg-white/5 hover:bg-white/10 text-white text-[10px] font-bold py-3 rounded-xl transition-all border border-white/10 active:scale-95">
-                                        GET NEW HINT
-                                    </button>
-                                    <button onClick={() => setAiResponse('Try looking at the edge cases like empty input or very large numbers.')} className="flex-1 bg-white/5 hover:bg-white/10 text-white text-[10px] font-bold py-3 rounded-xl transition-all border border-white/10 active:scale-95">
-                                        EXPLAIN ERROR
-                                    </button>
+                    {/* Right Panel: Compiler (Dark Mode) */}
+                    <div className="flex-1 flex flex-col relative bg-[#1e1e1e]">
+                        {/* Tab Header (Newton Style) */}
+                        <div className="h-10 bg-[#1e1e1e] border-b border-[#2d2d2d] flex items-center px-4 justify-between shrink-0">
+                            <div className="flex items-center gap-4 h-full">
+                                <div className="h-full flex items-center border-b-2 border-blue-500 px-2">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-100">{LANG_LABELS[lang]}</span>
                                 </div>
                             </div>
-                        )}
-                        <button onClick={() => setShowHint(true)} className="pointer-events-auto bg-[#ff3b30] hover:bg-[#ff453a] text-white px-8 py-5 rounded-[2rem] shadow-2xl flex items-center gap-4 transition-all hover:scale-105 active:scale-95 group border-2 border-white/10">
-                            <span className="font-black text-sm uppercase tracking-wider flex items-center gap-2">
-                                <span className="text-xl">💡</span> Need explanation of question?
-                            </span>
-                            <span className="bg-black/20 px-4 py-1.5 rounded-full text-[10px] font-black tracking-widest border border-white/10">VIEW HINT</span>
-                        </button>
+                            <div className="flex items-center gap-4">
+                                <span className="text-[10px] text-slate-500 font-bold">Autosaved at 3:11 PM</span>
+                                <div className="flex items-center gap-3">
+                                    <button className="text-slate-500 hover:text-white transition-colors">↺</button>
+                                    <button className="text-slate-500 hover:text-white transition-colors">⛶</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Monaco Editor */}
+                        <div className="flex-1 min-h-0 bg-[#1e1e1e]">
+                            <MonacoEditor
+                                height="100%"
+                                language={lang}
+                                value={code}
+                                onChange={(v) => setCode(v || '')}
+                                theme="vs-dark"
+                                options={{
+                                    fontSize: 14,
+                                    minimap: { enabled: false },
+                                    lineNumbers: 'on',
+                                    scrollBeyondLastLine: false,
+                                    automaticLayout: true,
+                                    padding: { top: 16 },
+                                    fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+                                }}
+                            />
+                        </div>
+
+                        {/* I/O Console Tabs */}
+                        <div className="bg-[#1e1e1e] border-t border-[#2d2d2d] flex flex-col" style={{ height: '220px' }}>
+                            <div className="flex px-4 items-center bg-[#161b22] border-b border-[#2d2f39]">
+                                {(['input', 'output', 'error'] as const).map(t => (
+                                    <button key={t} onClick={() => setTab(t)}
+                                        className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all h-10 ${tab === t ? 'text-white border-b-2 border-white' : 'text-slate-500 hover:text-slate-300'}`}>
+                                        {t}
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="flex-1 p-4 font-mono text-[13px] leading-relaxed overflow-y-auto bg-[#0d1117] custom-scrollbar">
+                                {tab === 'input' && (
+                                    <textarea className="w-full h-full bg-transparent resize-none outline-none border-none text-slate-300 placeholder-slate-700"
+                                        placeholder="Enter custom test input here..." value={input} onChange={e => setInput(e.target.value)} />
+                                )}
+                                {tab === 'output' && <div className="text-green-400 whitespace-pre-wrap">{output || (running ? 'Executing...' : 'Run code to see output.')}</div>}
+                                {tab === 'error' && <div className="text-red-400 whitespace-pre-wrap">{err || 'No errors.'}</div>}
+                            </div>
+                        </div>
+
+                        {/* Floating AI Assistant (Newton Portal Style) */}
+                        <div className="fixed bottom-6 right-6 z-[60] flex flex-col items-end gap-3 pointer-events-none">
+                            {showHint && (
+                                <div className="pointer-events-auto bg-[#1a1c23] border border-[#2d2f39] w-[380px] h-[500px] rounded-3xl shadow-2xl animate-chat-popup flex flex-col border border-white/5">
+                                    <div className="p-5 border-b border-[#2d2f39] flex items-center justify-between bg-[#111319] rounded-t-3xl">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-9 h-9 rounded-full bg-[#ff3b30] flex items-center justify-center text-lg shadow-lg shadow-[#ff3b30]/20">🤖</div>
+                                            <div>
+                                                <p className="font-extrabold text-white text-[11px] uppercase tracking-widest">AI Tutor</p>
+                                                <p className="text-[9px] text-green-500 font-bold uppercase tracking-widest">Listening</p>
+                                            </div>
+                                        </div>
+                                        <button onClick={() => setShowHint(false)} className="text-slate-500 hover:text-white transition-colors w-7 h-7 flex items-center justify-center bg-[#252833] rounded-full text-xs transition-all">✕</button>
+                                    </div>
+                                    <div className="flex-1 overflow-y-auto p-6 space-y-5 custom-scrollbar bg-[#0d1117]/80">
+                                        <div className="flex gap-3">
+                                            <div className="bg-[#161b22] text-slate-300 p-4 rounded-2xl rounded-tl-none text-[12px] leading-relaxed border border-[#2d2f39] max-w-[85%]">
+                                                How can I help you today? I can explain the **{selectedQ?.title}** problem or give you a hint.
+                                            </div>
+                                        </div>
+                                        {aiLoading ? (
+                                            <div className="flex gap-3">
+                                                <div className="bg-[#ff3b30]/10 text-[#ff3b30] p-3 rounded-2xl rounded-tl-none flex items-center gap-2 border border-[#ff3b30]/20">
+                                                    <span className="w-3 h-3 border-2 border-[#ff3b30]/30 border-t-[#ff3b30] rounded-full animate-spin" />
+                                                    <span className="text-[10px] font-black uppercase tracking-widest">Thinking</span>
+                                                </div>
+                                            </div>
+                                        ) : aiResponse && (
+                                            <div className="flex gap-3 animate-fade-in">
+                                                <div className="bg-[#ff3b30] text-white p-4 rounded-2xl rounded-tl-none text-[12px] font-bold leading-relaxed max-w-[85%] shadow-xl shadow-[#ff3b30]/10">
+                                                    {aiResponse}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="p-4 bg-[#111319] border-t border-[#2d2f39] flex gap-2 rounded-b-3xl">
+                                        <button onClick={fetchHint} disabled={aiLoading} className="flex-1 bg-white/5 hover:bg-white/10 text-white text-[10px] font-black uppercase py-4 rounded-xl transition-all border border-white/5 active:scale-95 tracking-[0.1em]">
+                                            GET HINT
+                                        </button>
+                                        <button onClick={() => setAiResponse('Try using a sliding window approach for O(N) complexity.')} className="flex-1 bg-[#ff3b30] hover:bg-[#ff453a] text-white text-[10px] font-black uppercase py-4 rounded-xl transition-all shadow-lg shadow-[#ff3b30]/20 active:scale-95 tracking-[0.1em]">
+                                            ASK AI
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                            <button onClick={() => setShowHint(true)} className="pointer-events-auto bg-[#ff3b30] hover:bg-[#ff453a] text-white pl-8 pr-12 py-5 rounded-full shadow-2xl flex items-center gap-4 transition-all hover:scale-105 active:scale-95 group border-2 border-white/10">
+                                <span className="font-black text-sm uppercase tracking-wider flex items-center gap-3">
+                                    <span className="text-2xl">💡</span> Need explanation of question?
+                                </span>
+                                <span className="bg-black/20 px-5 py-2 rounded-full text-[10px] font-black tracking-widest border border-white/10">VIEW HINT</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
+
+            <style jsx global>{`
+                .custom-scrollbar-light::-webkit-scrollbar { width: 4px; }
+                .custom-scrollbar-light::-webkit-scrollbar-track { background: transparent; }
+                .custom-scrollbar-light::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+                .custom-scrollbar-light::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+                
+                .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+                .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+                .custom-scrollbar::-webkit-scrollbar-thumb { background: #2d2d2d; border-radius: 10px; }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #3d3d3d; }
+                
+                @keyframes slide-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+                .animate-slide-up { animation: slide-up 0.3s ease-out forwards; }
+                @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+                .animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
+                @keyframes chat-popup { from { opacity: 0; transform: scale(0.95) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+                .animate-chat-popup { animation: chat-popup 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+            `}</style>
         </div>
     );
 }
