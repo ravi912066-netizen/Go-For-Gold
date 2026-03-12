@@ -1,6 +1,9 @@
 'use client';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
+import dynamic from 'next/dynamic';
+
+const VideoCallOverlay = dynamic(() => import('@/components/VideoCallOverlay'), { ssr: false });
 
 interface Message {
     id: number;
@@ -18,13 +21,6 @@ interface LiveRoomProps {
     onClose?: () => void;
 }
 
-const ICE_SERVERS = {
-    iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-    ],
-};
-
 const avatar = (name: string) => `https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`;
 
 export default function LiveRoom({ roomId, userId, userName, role, onClose }: LiveRoomProps) {
@@ -34,8 +30,6 @@ export default function LiveRoom({ roomId, userId, userName, role, onClose }: Li
     const [activeTab, setActiveTab] = useState<'chat' | 'poll' | 'doubts' | 'results'>('chat');
     const [callState, setCallState] = useState<'idle' | 'calling' | 'ringing' | 'connected'>('idle');
     const [incomingFrom, setIncomingFrom] = useState<{ id: string; name: string } | null>(null);
-    const [cameraOn, setCameraOn] = useState(false);
-    const [micOn, setMicOn] = useState(true);
     const [onlineCount, setOnlineCount] = useState(0);
     const [proctorAlerts, setProctorAlerts] = useState<string[]>([]);
 
@@ -44,15 +38,10 @@ export default function LiveRoom({ roomId, userId, userName, role, onClose }: Li
     const [myVote, setMyVote] = useState<string | null>(null);
     const [pollResults, setPollResults] = useState<{ [key: string]: number }>({ A: 0, B: 0, C: 0, D: 0 });
 
-    const localVideoRef = useRef<HTMLVideoElement>(null);
-    const remoteVideoRef = useRef<HTMLVideoElement>(null);
-    const peerRef = useRef<RTCPeerConnection | null>(null);
-    const localStreamRef = useRef<MediaStream | null>(null);
     const chatBottomRef = useRef<HTMLDivElement>(null);
-    const remoteSocketId = useRef<string>('');
 
     useEffect(() => {
-        const s = io('http://localhost:4000', { transports: ['websocket', 'polling'] });
+        const s = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5000', { transports: ['websocket', 'polling'] });
         setSocket(s);
 
         s.on('connect', () => {
@@ -70,81 +59,27 @@ export default function LiveRoom({ roomId, userId, userName, role, onClose }: Li
             if (role === 'admin') setPollResults(prev => ({ ...prev, [option]: (prev[option] || 0) + 1 }));
         });
 
-        // WebRTC
-        s.on('incoming_call', ({ from, callerName }: any) => { setIncomingFrom({ id: from, name: callerName }); setCallState('ringing'); });
-        s.on('call_accepted', ({ by }: any) => { remoteSocketId.current = by; startCall(s, by, true); });
-        s.on('call_rejected', () => { setCallState('idle'); alert('Teacher is busy'); });
-        s.on('call_ended', () => endCall());
-        s.on('webrtc_offer', async ({ offer, from }: any) => { remoteSocketId.current = from; await handleOffer(s, offer, from); });
-        s.on('webrtc_answer', async ({ answer }: any) => { await peerRef.current?.setRemoteDescription(new RTCSessionDescription(answer)); });
-        s.on('webrtc_ice', async ({ candidate }: any) => { try { await peerRef.current?.addIceCandidate(new RTCIceCandidate(candidate)); } catch { } });
+        // WebRTC signaling for incoming 1:1 calls
+        s.on('incoming_call', ({ from, callerName }: any) => {
+            setIncomingFrom({ id: from, name: callerName });
+            setCallState('ringing');
+        });
+        s.on('call_ended', () => setCallState('idle'));
 
         s.on('proctor_alert', ({ event, userName: uName, time }: any) => {
             const msg = `⚠️ ${uName}: ${event} at ${new Date(time).toLocaleTimeString()}`;
             setProctorAlerts(prev => [msg, ...prev].slice(0, 20));
         });
 
-        return () => { s.disconnect(); endCall(); };
+        return () => { s.disconnect(); };
     }, [roomId, userId, userName, role]);
 
     useEffect(() => { chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-    const getLocalStream = async () => {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            localStreamRef.current = stream;
-            if (localVideoRef.current) localVideoRef.current.srcObject = stream;
-            setCameraOn(true);
-            return stream;
-        } catch { return null; }
-    };
-
-    const createPeer = (s: Socket) => {
-        const pc = new RTCPeerConnection(ICE_SERVERS);
-        pc.onicecandidate = (e) => { if (e.candidate && remoteSocketId.current) s.emit('webrtc_ice', { candidate: e.candidate, to: remoteSocketId.current }); };
-        pc.ontrack = (e) => { if (remoteVideoRef.current) remoteVideoRef.current.srcObject = e.streams[0]; setCallState('connected'); };
-        return pc;
-    };
-
-    const startCall = async (s: Socket, targetId: string, isInitiator: boolean) => {
-        const stream = await getLocalStream();
-        if (!stream) return;
-        const pc = createPeer(s);
-        peerRef.current = pc;
-        stream.getTracks().forEach(t => pc.addTrack(t, stream));
-        if (isInitiator) {
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            s.emit('webrtc_offer', { roomId, offer, targetSocketId: targetId });
-        }
-    };
-
-    const handleOffer = async (s: Socket, offer: RTCSessionDescriptionInit, from: string) => {
-        const stream = await getLocalStream();
-        if (!stream) return;
-        const pc = createPeer(s);
-        peerRef.current = pc;
-        stream.getTracks().forEach(t => pc.addTrack(t, stream));
-        await pc.setRemoteDescription(new RTCSessionDescription(offer));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        s.emit('webrtc_answer', { answer, to: from });
-        setCallState('connected');
-    };
-
-    const endCall = useCallback(() => {
-        peerRef.current?.close(); peerRef.current = null;
-        localStreamRef.current?.getTracks().forEach(t => t.stop()); localStreamRef.current = null;
-        if (localVideoRef.current) localVideoRef.current.srcObject = null;
-        if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-        setCameraOn(false); setCallState('idle'); setIncomingFrom(null);
-    }, []);
-
     const acceptCall = () => {
         if (!socket || !incomingFrom) return;
         socket.emit('call_accept', { to: incomingFrom.id });
-        startCall(socket, incomingFrom.id, false);
-        setIncomingFrom(null);
+        setCallState('connected');
     };
 
     const rejectCall = () => {
@@ -152,13 +87,6 @@ export default function LiveRoom({ roomId, userId, userName, role, onClose }: Li
         socket.emit('call_reject', { to: incomingFrom.id });
         setCallState('idle');
         setIncomingFrom(null);
-    };
-
-    const toggleMic = () => {
-        if (localStreamRef.current) {
-            localStreamRef.current.getAudioTracks().forEach(t => { t.enabled = !t.enabled; });
-            setMicOn(prev => !prev);
-        }
     };
 
     const sendMessage = (e: React.FormEvent) => {
@@ -178,7 +106,7 @@ export default function LiveRoom({ roomId, userId, userName, role, onClose }: Li
                     <div className="flex items-center gap-3">
                         <img src="/logo.png" className="w-8 h-8 rounded-lg" alt="" />
                         <div>
-                            <p className="text-white font-black text-sm tracking-tight leading-none uppercase">C++, OOPS, OS & DBMS : BARC PRACTICE</p>
+                            <p className="text-white font-black text-sm tracking-tight leading-none uppercase">GO FOR GOLD PLATFORM</p>
                             <p className="text-[10px] text-amber-500 font-bold tracking-widest mt-0.5">LECTURE 21 • LIVE NOW</p>
                         </div>
                     </div>
@@ -244,16 +172,11 @@ int main() {
 
             <div className="w-full md:w-96 flex flex-col bg-[#0d1523] shrink-0">
                 <div className="aspect-video bg-black relative border-b border-[#1e2d45] overflow-hidden">
-                    <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
-                    {callState !== 'connected' && (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center">
-                            <img src={avatar('Rahul')} className="w-16 h-16 rounded-full border-2 border-amber-500 mb-2" alt="" />
-                            <p className="text-white font-bold text-xs uppercase tracking-widest">TEACHER OFFLINE</p>
-                        </div>
-                    )}
-                    <video ref={localVideoRef} autoPlay playsInline muted
-                        className="absolute bottom-3 right-3 w-24 h-24 object-cover rounded-2xl border-2 border-amber-500/50 shadow-2xl"
-                        style={{ display: cameraOn ? 'block' : 'none' }} />
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <img src={avatar('Rahul')} className="w-16 h-16 rounded-full border-2 border-amber-500 mb-2" alt="" />
+                        <p className="text-white font-bold text-xs uppercase tracking-widest">TEACHER OFFLINE</p>
+                        <p className="text-[10px] text-slate-500 mt-1 uppercase font-black">Video available upon call</p>
+                    </div>
                 </div>
 
                 <div className="flex bg-[#111827] border-b border-[#1e2d45]">
@@ -331,6 +254,17 @@ int main() {
                     </form>
                 </div>
             </div>
+
+            {callState === 'connected' && incomingFrom && (
+                <VideoCallOverlay
+                    socket={socket}
+                    currentUserId={userId}
+                    currentUserName={userName}
+                    isInitiator={false}
+                    targetSocketId={incomingFrom.id}
+                    onClose={() => { setCallState('idle'); setIncomingFrom(null); }}
+                />
+            )}
         </div>
     );
 }

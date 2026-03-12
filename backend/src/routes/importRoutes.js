@@ -236,6 +236,7 @@ router.post('/sheet/save', auth, adminOnly, async (req, res) => {
                     timeLimit: 2, memoryLimit: 256,
                     testcases: JSON.stringify([]),
                     isQotd: false,
+                    isReleased: false, // Default to false for bulk imports so admin can review
                     deadline: q.deadline ? new Date(q.deadline) : null,
                     courseId: courseId ? parseInt(courseId) : null,
                     starterCode: ''
@@ -248,6 +249,23 @@ router.post('/sheet/save', auth, adminOnly, async (req, res) => {
     }
 
     res.json({ success: true, created: created.length, failed: failed.length, failedItems: failed });
+});
+
+// ─── POST /api/import/release ────────────────────────────────────────────────
+// Bulk-release selected questions (make them visible to students)
+router.post('/release', auth, adminOnly, async (req, res) => {
+    const { questionIds } = req.body;
+    if (!questionIds?.length) return res.status(400).json({ error: 'No IDs provided' });
+
+    try {
+        await prisma.question.updateMany({
+            where: { id: { in: questionIds.map(id => parseInt(id)) } },
+            data: { isReleased: true }
+        });
+        res.json({ success: true, message: `Successfully released ${questionIds.length} questions` });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to release questions: ' + e.message });
+    }
 });
 
 module.exports = router;

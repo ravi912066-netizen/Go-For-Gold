@@ -18,6 +18,7 @@ const materialRoutes = require('./routes/materials');
 const contestRoutes = require('./routes/contests');
 const aiRoutes = require('./routes/ai');
 const importRoutes = require('./routes/importRoutes');
+const externalResourcesRoutes = require('./routes/externalResources');
 
 const app = express();
 const server = http.createServer(app);
@@ -48,6 +49,7 @@ app.use('/api/materials', materialRoutes);
 app.use('/api/contests', contestRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/import', importRoutes);
+app.use('/api/resources', externalResourcesRoutes);
 
 // ─── Socket.io: Chat + WebRTC Signaling + Proctoring ──────────────────────────
 const chatHistory = new Map();    // roomId → messages[]
@@ -112,7 +114,16 @@ io.on('connection', (socket) => {
     io.to(to).emit('webrtc_ice', { candidate, from: socket.id });
   });
 
-  socket.on('call_request', ({ roomId, callerName }) => {
+  socket.on('call_request', ({ roomId, targetUserId, callerName }) => {
+    if (targetUserId) {
+      // Direct call to specific user
+      const targetSocket = [...socketUsers.entries()].find(([id, u]) => u.userId === targetUserId)?.[0];
+      if (targetSocket) {
+        io.to(targetSocket).emit('incoming_call', { from: socket.id, callerName });
+        return;
+      }
+    }
+    // Fallback to room-wide call request
     socket.to(roomId).emit('incoming_call', { from: socket.id, callerName });
   });
 
@@ -124,8 +135,12 @@ io.on('connection', (socket) => {
     io.to(to).emit('call_rejected');
   });
 
-  socket.on('call_end', ({ roomId }) => {
-    socket.to(roomId).emit('call_ended');
+  socket.on('call_end', ({ roomId, targetSocketId }) => {
+    if (targetSocketId) {
+      io.to(targetSocketId).emit('call_ended');
+    } else if (roomId) {
+      socket.to(roomId).emit('call_ended');
+    }
   });
 
   // ── Polls ─────────────────────────────────────────────────────────────

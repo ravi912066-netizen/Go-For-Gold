@@ -46,6 +46,7 @@ model Question {
   deadline     DateTime?
   courseId     Int?
   course       Course?  @relation(fields: [courseId], references: [id])
+  isReleased   Boolean  @default(true) // Default true for existing, false for staged sheet imports
   createdAt    DateTime @default(now())
 
   submissions  Submission[]
@@ -102,6 +103,7 @@ model Assignment {
   tags        String?
   externalUrl String?   // For Google Sheets / PDF links
   isProctored Boolean   @default(false)
+  isReleased  Boolean   @default(true) 
   reward      String?  @default("100 XP")
   createdAt   DateTime @default(now())
 
@@ -187,4 +189,12 @@ model UserBadge {
   badge     Badge    @relation(fields: [badgeId], references: [id])
 
   @@unique([userId, badgeId])
+}
+model ExternalResource {
+  id        Int      @id @default(autoincrement())
+  title     String
+  url       String
+  type      String   @default("newton_playground")
+  addedBy   Int
+  createdAt DateTime @default(now())
 }

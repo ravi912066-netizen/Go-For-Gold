@@ -11,6 +11,13 @@ router.get('/', async (req, res) => {
         if (difficulty) where.difficulty = difficulty;
         if (courseId) where.courseId = parseInt(courseId);
         if (search) where.title = { contains: search };
+
+        // Only show released questions unless user is admin
+        // Note: For simplicity if no auth token is passed, we treat as student
+        if (!req.query.isAdminView) {
+            where.isReleased = true;
+        }
+
         const questions = await prisma.question.findMany({ where, orderBy: { createdAt: 'desc' }, include: { course: true } });
         res.json(questions);
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -60,6 +67,7 @@ router.post('/', auth, adminOnly, async (req, res) => {
                 memoryLimit: memoryLimit || 256,
                 starterCode, testcases: JSON.stringify(testcases || []),
                 isQotd: !!isQotd,
+                isReleased: req.body.isReleased !== undefined ? !!req.body.isReleased : true,
                 qotdDate: qotdDate ? new Date(qotdDate) : null,
                 deadline: deadline ? new Date(deadline) : null,
                 courseId: courseId ? parseInt(courseId) : null

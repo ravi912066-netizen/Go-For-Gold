@@ -175,70 +175,90 @@ export default function ProblemPage() {
             </header>
 
             {/* 3-panel layout */}
-            <div className="flex flex-1 min-h-0">
+            <div className="flex flex-1 min-h-0 overflow-hidden">
                 {/* LEFT: Problem statement */}
-                <div className="w-80 lg:w-96 bg-[#111827] border-r border-[#1e2d45] flex flex-col overflow-hidden shrink-0">
-                    <div className="px-4 pt-3 pb-2 border-b border-[#1e2d45] flex items-center gap-2 bg-[#0d1117]">
-                        <span className="text-xs bg-[#1e2d45] text-slate-300 px-2 py-1 rounded font-medium">Problem Statement</span>
+                <div className="w-80 lg:w-[450px] bg-[#111827] border-r border-[#1e2d45] flex flex-col shrink-0">
+                    <div className="px-4 py-2 border-b border-[#1e2d45] flex items-center justify-between bg-[#0d1117]">
+                        <div className="flex gap-4">
+                            <button className="text-[10px] font-black text-amber-500 uppercase tracking-widest border-b-2 border-amber-500 pb-1">Question</button>
+                            <button className="text-[10px] font-black text-slate-500 uppercase tracking-widest hover:text-slate-300 pb-1">Submissions</button>
+                        </div>
                     </div>
-                    <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-                        <h2 className="text-lg font-black text-white mb-1">{problem.title}</h2>
-                        <p className="text-xs text-slate-500 mb-3">
-                            Time Limit: {problem.timeLimit}s, Memory Limit: {problem.memoryLimit}MB
-                        </p>
-                        <div className="flex gap-2 mb-4 flex-wrap">
+                    <div className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-[#0d1117]">
+                        <div className="flex gap-2 mb-4">
                             <span className={`${problem.difficulty === 'Easy' ? 'badge-easy' : problem.difficulty === 'Medium' ? 'badge-medium' : 'badge-hard'}`}>{problem.difficulty}</span>
                             {JSON.parse(problem.tags || '[]').map((t: string) => (
-                                <span key={t} className="text-xs bg-[#1e2d45] text-slate-400 px-2 py-0.5 rounded">#{t}</span>
+                                <span key={t} className="text-[10px] bg-sky-500/10 text-sky-400 px-2 py-0.5 rounded uppercase font-black tracking-widest">#{t}</span>
                             ))}
                         </div>
-                        <div className="prose-dark text-sm text-slate-300 leading-relaxed space-y-4">
+                        <h2 className="text-xl font-bold text-white mb-2">{problem.title}</h2>
+                        <div className="prose-dark text-sm text-slate-300 leading-relaxed mb-8">
                             {problem.statement.split('\n\n').map((para: string, i: number) => (
-                                <p key={i} dangerouslySetInnerHTML={{
+                                <p key={i} className="mb-4" dangerouslySetInnerHTML={{
                                     __html: para.replace(/\*\*(.*?)\*\*/g, '<strong class="text-white">$1</strong>')
                                         .replace(/\n/g, '<br/>')
                                 }} />
                             ))}
                         </div>
-                        {/* Sample testcases */}
+
+                        {/* Examples Section */}
                         {JSON.parse(problem.testcases || '[]').slice(0, 2).map((tc: any, i: number) => (
-                            <div key={i} className="mt-6">
-                                <p className="text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">Example {i + 1}:</p>
-                                <div className="bg-[#0a0e1a] rounded-xl p-4 border border-[#1e2d45] shadow-inner">
-                                    <p className="text-[10px] uppercase font-bold text-slate-600 mb-2 tracking-widest">Input</p>
-                                    <pre className="text-green-400 font-mono text-sm whitespace-pre-wrap mb-4 bg-black/40 p-2 rounded">{tc.input}</pre>
-                                    <p className="text-[10px] uppercase font-bold text-slate-600 mb-2 tracking-widest">Output</p>
-                                    <pre className="text-amber-400 font-mono text-sm whitespace-pre-wrap bg-black/40 p-2 rounded">{tc.output}</pre>
+                            <div key={i} className="mb-8">
+                                <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-3">Example {i + 1}</h4>
+                                <div className="bg-[#0a0e1a] rounded-2xl p-5 border border-white/5 space-y-4">
+                                    <div>
+                                        <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest mb-2">Input</p>
+                                        <div className="bg-black/40 rounded-xl p-3 font-mono text-sm text-green-400 border border-white/5">{tc.input}</div>
+                                    </div>
+                                    <div>
+                                        <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest mb-2">Output</p>
+                                        <div className="bg-black/40 rounded-xl p-3 font-mono text-sm text-amber-400 border border-white/5">{tc.output}</div>
+                                    </div>
                                 </div>
                             </div>
                         ))}
+
+                        {/* Constraints */}
+                        <div className="mt-8 pt-6 border-t border-white/5">
+                            <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-3">Constraints</h4>
+                            <ul className="text-xs text-slate-400 space-y-2 list-disc pl-4">
+                                <li>Time Limit: {problem.timeLimit}s</li>
+                                <li>Memory Limit: {problem.memoryLimit}MB</li>
+                                <li>Test Cases: Hidden except samples</li>
+                            </ul>
+                        </div>
                     </div>
                 </div>
 
                 {/* CENTER: Editor + I/O */}
-                <div className="flex-1 flex flex-col min-w-0">
+                <div className="flex-1 flex flex-col min-w-0 bg-[#0d1117]">
                     {/* Editor toolbar */}
-                    <div className="h-10 bg-[#0d1117] border-b border-[#1e2d45] flex items-center px-3 gap-3 shrink-0">
+                    <div className="h-10 bg-[#0d1117] border-b border-[#1e2d45] flex items-center px-4 justify-between shrink-0">
                         <div className="relative" onClick={e => e.stopPropagation()}>
                             <button onClick={() => setShowLangDrop(!showLangDrop)}
-                                className="flex items-center gap-1.5 text-slate-300 hover:text-white text-sm font-medium">
-                                {LANG_LABELS[lang]} ▾
+                                className="flex items-center gap-2 text-slate-400 hover:text-white text-[10px] font-black uppercase tracking-widest transition-all">
+                                {LANG_LABELS[lang]}
+                                <span className={`transition-transform duration-200 ${showLangDrop ? 'rotate-180' : ''}`}>▼</span>
                             </button>
                             {showLangDrop && (
-                                <div className="absolute top-full left-0 mt-1 bg-[#1a2235] border border-[#1e2d45] rounded-lg overflow-hidden z-50 shadow-xl">
+                                <div className="absolute top-full left-0 mt-2 bg-[#111827] border border-[#1e2d45] rounded-xl overflow-hidden z-[60] shadow-2xl min-w-[160px] animate-scale-in">
                                     {Object.entries(LANG_LABELS).map(([k, v]) => (
                                         <button key={k} onClick={() => handleLangChange(k)}
-                                            className={`block w-full text-left px-4 py-2 text-sm hover:bg-white/5 transition-colors ${lang === k ? 'text-amber-400' : 'text-slate-300'}`}>
-                                            {v} {lang === k && '✓'}
+                                            className={`block w-full text-left px-4 py-2.5 text-[10px] font-black uppercase tracking-widest hover:bg-white/5 transition-colors ${lang === k ? 'text-amber-500 bg-amber-500/5' : 'text-slate-400'}`}>
+                                            {v}
                                         </button>
                                     ))}
                                 </div>
                             )}
                         </div>
+                        <div className="flex items-center gap-3">
+                            <button className="p-1.5 hover:bg-white/5 rounded-lg text-slate-500 hover:text-white transition-all"><span className="text-sm">🔄</span></button>
+                            <button className="p-1.5 hover:bg-white/5 rounded-lg text-slate-500 hover:text-white transition-all"><span className="text-sm">⛶</span></button>
+                        </div>
                     </div>
 
                     {/* Monaco Editor */}
-                    <div className="flex-1 min-h-0">
+                    <div className="flex-1 min-h-0 border-b border-[#1e2d45]">
                         <MonacoEditor
                             height="100%"
                             language={MONACO_LANG[lang]}
@@ -246,100 +266,106 @@ export default function ProblemPage() {
                             onChange={(v) => setCode(v || '')}
                             theme="vs-dark"
                             options={{
-                                fontSize: 14,
+                                fontSize: 13,
                                 fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
                                 minimap: { enabled: false },
                                 lineNumbers: 'on',
-                                padding: { top: 12 },
+                                padding: { top: 16 },
                                 scrollBeyondLastLine: false,
                                 automaticLayout: true,
                                 tabSize: 4,
                                 wordWrap: 'on',
+                                hideCursorInOverviewRuler: true,
+                                overviewRulerBorder: false,
                             }}
                         />
                     </div>
 
                     {/* I/O Tabs */}
-                    <div className="border-t border-[#1e2d45] bg-[#0d1117] shrink-0" style={{ height: '180px' }}>
-                        <div className="flex border-b border-[#1e2d45] px-3">
-                            {(['input', 'output', 'error'] as const).map(t => (
-                                <button key={t} onClick={() => setTab(t)}
-                                    className={`px-3 py-2 text-xs font-medium uppercase tracking-wide transition-colors ${tab === t ? 'text-amber-400 border-b-2 border-amber-400' : 'text-slate-500 hover:text-slate-300'}`}>
+                    <div className="bg-[#0d1117] shrink-0 flex flex-col" style={{ height: '240px' }}>
+                        <div className="flex border-b border-[#1e2d45] px-4">
+                            {(['INPUT', 'OUTPUT', 'ERROR'] as const).map(t => (
+                                <button key={t} onClick={() => setTab(t.toLowerCase() as any)}
+                                    className={`px-4 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all border-b-2 ${tab === t.toLowerCase() ? 'text-amber-500 border-amber-500' : 'text-slate-500 border-transparent hover:text-slate-300'}`}>
                                     {t}
                                 </button>
                             ))}
-                            {status && (
-                                <span className={`ml-auto self-center text-xs font-bold ${statusColor()}`}>{status}</span>
-                            )}
-                            {runtime !== null && (
-                                <span className="ml-3 self-center text-xs text-slate-500">{runtime}ms · {memory}MB</span>
-                            )}
+                            <div className="ml-auto flex items-center gap-4">
+                                {status && <span className={`text-[10px] font-black uppercase tracking-widest ${statusColor()}`}>{status}</span>}
+                                {runtime !== null && <span className="text-[10px] text-slate-500 font-black tracking-widest lowercase">{runtime}ms · {memory}mb</span>}
+                            </div>
                         </div>
-                        <div className="p-3 h-[calc(100%-36px)] overflow-y-auto">
-                            {tab === 'input' && (
-                                <textarea className="w-full h-full bg-transparent text-sm text-slate-300 font-mono resize-none outline-none placeholder-slate-600"
-                                    placeholder="Enter custom test input here…" value={input}
-                                    onChange={e => setInput(e.target.value)} />
-                            )}
-                            {tab === 'output' && (
-                                <pre className="text-sm font-mono text-green-300 whitespace-pre-wrap">{output || (running ? 'Running…' : 'Run your code to see output')}</pre>
-                            )}
-                            {tab === 'error' && (
-                                <pre className="text-sm font-mono text-red-400 whitespace-pre-wrap">{err || 'No errors'}</pre>
-                            )}
+                        <div className="flex-1 flex min-h-0 bg-[#0a0e1a]/50">
+                            {/* Custom Console with Line Numbers */}
+                            <div className="w-10 bg-[#0d1117]/50 flex flex-col items-center pt-3 text-[10px] text-slate-700 font-mono border-r border-white/5 select-none">
+                                {[1, 2, 3, 4, 5, 6, 7, 8].map(n => <div key={n} className="leading-6">{n}</div>)}
+                            </div>
+                            <div className="flex-1 p-3 overflow-y-auto">
+                                {tab === 'input' && (
+                                    <textarea className="w-full h-full bg-transparent text-sm text-slate-300 font-mono resize-none outline-none placeholder-slate-600 leading-6"
+                                        placeholder="Enter custom test input here…" value={input}
+                                        onChange={e => setInput(e.target.value)} />
+                                )}
+                                {tab === 'output' && (
+                                    <pre className="text-sm font-mono text-green-300 whitespace-pre-wrap leading-6">{output || (running ? 'Judging…' : 'Run code to see results')}</pre>
+                                )}
+                                {tab === 'error' && (
+                                    <pre className="text-sm font-mono text-red-400 whitespace-pre-wrap leading-6">{err || 'No compile time errors'}</pre>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 {/* RIGHT: AI Assistant */}
                 <div className="w-72 xl:w-80 border-l border-[#1e2d45] bg-[#111827] flex flex-col shrink-0">
-                    <div className="px-4 py-3 border-b border-[#1e2d45]">
-                        <div className="flex items-center gap-2 mb-1">
-                            <span className="text-amber-400 text-lg">🤖</span>
-                            <h3 className="font-bold text-white text-sm">AI Assistant</h3>
+                    <div className="px-5 py-6 space-y-1">
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-xs font-black text-white uppercase tracking-[0.2em]">Newton AI</h3>
+                            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.5)]"></span>
                         </div>
-                        <p className="text-xs text-slate-500">Hints, debugging, and optimization help</p>
+                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Active Assistant</p>
                     </div>
 
-                    {/* Mode selector */}
-                    <div className="p-3 border-b border-[#1e2d45]">
-                        <div className="grid grid-cols-2 gap-1.5">
-                            {([
-                                { mode: 'hint', label: '💡 Hint', color: 'amber' },
-                                { mode: 'debug', label: '🔍 Debug', color: 'blue' },
-                                { mode: 'explain', label: '📖 Explain', color: 'purple' },
-                                { mode: 'optimize', label: '⚡ Optimize', color: 'green' },
-                            ] as const).map(({ mode, label }) => (
-                                <button key={mode} onClick={() => setAiMode(mode)}
-                                    className={`text-xs py-2 px-2 rounded-lg font-medium transition-all ${aiMode === mode ? 'bg-amber-500/20 border border-amber-500/40 text-amber-300' : 'bg-[#0a0e1a] border border-[#1e2d45] text-slate-400 hover:text-white'}`}>
-                                    {label}
+                    <div className="px-5 space-y-4">
+                        <div className="grid grid-cols-2 gap-2">
+                            {[
+                                { mode: 'hint', label: '💡 HINT', active: aiMode === 'hint' },
+                                { mode: 'debug', label: '🔍 DEBUG', active: aiMode === 'debug' },
+                                { mode: 'explain', label: '📖 EXPLAIN', active: aiMode === 'explain' },
+                                { mode: 'optimize', label: '⚡ SPEED', active: aiMode === 'optimize' },
+                            ].map(m => (
+                                <button key={m.mode} onClick={() => setAiMode(m.mode as any)}
+                                    className={`py-3 rounded-xl text-[10px] font-black transition-all border ${m.active ? 'bg-amber-500 text-black border-amber-500 shadow-lg shadow-amber-500/20' : 'bg-transparent border-white/5 text-slate-500 hover:border-white/10 hover:text-white'}`}>
+                                    {m.label}
                                 </button>
                             ))}
                         </div>
                         <button onClick={handleAI} disabled={aiLoading}
-                            className="btn-gold w-full mt-2 py-2 text-sm flex items-center justify-center gap-2">
-                            {aiLoading ? <><span className="w-3 h-3 border-2 border-black/30 border-t-black rounded-full animate-spin" />Thinking…</> : 'Ask AI'}
+                            className="w-full bg-slate-100 hover:bg-white text-black py-3 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all disabled:opacity-50">
+                            {aiLoading ? 'Synthesizing...' : 'ASK ASSISTANT'}
                         </button>
                     </div>
 
-                    {/* AI Response */}
-                    <div className="flex-1 overflow-y-auto p-4">
+                    <div className="flex-1 overflow-y-auto p-5 mt-4 custom-scrollbar">
                         {aiResponse ? (
-                            <div className="space-y-2">
-                                <div className="bg-[#0a0e1a] rounded-xl p-4 text-sm text-slate-300 leading-relaxed border border-[#1e2d45]">
-                                    {aiResponse.split('\n').map((line, i) => {
-                                        if (line.startsWith('**') && line.endsWith('**')) return <p key={i} className="font-bold text-white mb-2">{line.replace(/\*\*/g, '')}</p>;
-                                        if (line.startsWith('*') && line.endsWith('*')) return <p key={i} className="text-slate-500 italic text-xs mt-2">{line.replace(/\*/g, '')}</p>;
-                                        return <p key={i} className="text-slate-300">{line}</p>;
-                                    })}
+                            <div className="bg-[#0a0e1a] rounded-2xl p-5 border border-white/5 space-y-4">
+                                <div className="prose-dark text-xs text-slate-400 leading-relaxed">
+                                    {aiResponse.split('\n').map((line, i) => (
+                                        <p key={i} className="mb-2">{line}</p>
+                                    ))}
                                 </div>
-                                <p className="text-xs text-slate-600 text-center">AI gives hints only. Ask explicitly for full solution.</p>
+                                <div className="pt-4 border-t border-white/5">
+                                    <button onClick={() => setAiResponse('')} className="text-[9px] font-black text-slate-600 uppercase tracking-widest hover:text-slate-400 transition-all">Clear Response</button>
+                                </div>
                             </div>
                         ) : (
-                            <div className="flex flex-col items-center justify-center h-full text-center opacity-50">
-                                <span className="text-4xl mb-3">🤖</span>
-                                <p className="text-slate-500 text-sm">Select a mode and click "Ask AI"</p>
-                                <p className="text-slate-600 text-xs mt-1">AI gives hints by default, not full solutions</p>
+                            <div className="flex flex-col items-center justify-center h-full text-center space-y-4 opacity-40">
+                                <div className="w-16 h-16 rounded-3xl bg-white/5 flex items-center justify-center text-3xl">🤖</div>
+                                <div>
+                                    <p className="text-[10px] font-black text-white uppercase tracking-widest">Need help?</p>
+                                    <p className="text-[9px] text-slate-500 font-bold uppercase tracking-tight mt-1">Select a mode above</p>
+                                </div>
                             </div>
                         )}
                     </div>
