@@ -15,9 +15,20 @@ router.get('/', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+router.get('/:id', async (req, res) => {
+    try {
+        const assignment = await prisma.assignment.findUnique({
+            where: { id: parseInt(req.params.id) },
+            include: { course: { select: { title: true } }, questions: { include: { question: true } } }
+        });
+        if (!assignment) return res.status(404).json({ error: 'Assignment not found' });
+        res.json(assignment);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 router.post('/', auth, adminOnly, async (req, res) => {
     try {
-        const { title, description, courseId, startTime, deadline, difficulty, tags, questionIds } = req.body;
+        const { title, description, courseId, startTime, deadline, difficulty, tags, questionIds, externalUrl, isProctored, reward } = req.body;
         const assignment = await prisma.assignment.create({
             data: {
                 title, description,
@@ -25,6 +36,9 @@ router.post('/', auth, adminOnly, async (req, res) => {
                 startTime: startTime ? new Date(startTime) : null,
                 deadline: deadline ? new Date(deadline) : null,
                 difficulty, tags,
+                externalUrl,
+                isProctored: !!isProctored,
+                reward: reward ? parseFloat(reward) : null,
                 questions: questionIds ? {
                     create: questionIds.map(qid => ({ questionId: parseInt(qid) }))
                 } : undefined
@@ -40,6 +54,7 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
         const data = { ...req.body };
         if (data.startTime) data.startTime = new Date(data.startTime);
         if (data.deadline) data.deadline = new Date(data.deadline);
+        if (data.isProctored !== undefined) data.isProctored = !!data.isProctored;
         delete data.questionIds;
         const a = await prisma.assignment.update({ where: { id: parseInt(req.params.id) }, data });
         res.json(a);

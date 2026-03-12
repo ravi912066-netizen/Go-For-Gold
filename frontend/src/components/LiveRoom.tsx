@@ -25,17 +25,24 @@ const ICE_SERVERS = {
     ],
 };
 
+const avatar = (name: string) => `https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`;
+
 export default function LiveRoom({ roomId, userId, userName, role, onClose }: LiveRoomProps) {
     const [socket, setSocket] = useState<Socket | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
-    const [view, setView] = useState<'chat' | 'video'>('chat');
+    const [activeTab, setActiveTab] = useState<'chat' | 'poll' | 'doubts' | 'results'>('chat');
     const [callState, setCallState] = useState<'idle' | 'calling' | 'ringing' | 'connected'>('idle');
     const [incomingFrom, setIncomingFrom] = useState<{ id: string; name: string } | null>(null);
     const [cameraOn, setCameraOn] = useState(false);
     const [micOn, setMicOn] = useState(true);
     const [onlineCount, setOnlineCount] = useState(0);
     const [proctorAlerts, setProctorAlerts] = useState<string[]>([]);
+
+    // Poll state
+    const [currentPoll, setCurrentPoll] = useState<{ question: string; startTime: string } | null>(null);
+    const [myVote, setMyVote] = useState<string | null>(null);
+    const [pollResults, setPollResults] = useState<{ [key: string]: number }>({ A: 0, B: 0, C: 0, D: 0 });
 
     const localVideoRef = useRef<HTMLVideoElement>(null);
     const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -44,7 +51,6 @@ export default function LiveRoom({ roomId, userId, userName, role, onClose }: Li
     const chatBottomRef = useRef<HTMLDivElement>(null);
     const remoteSocketId = useRef<string>('');
 
-    // ── Connect socket ────────────────────────────────────────────────────────
     useEffect(() => {
         const s = io('http://localhost:4000', { transports: ['websocket', 'polling'] });
         setSocket(s);
@@ -57,45 +63,32 @@ export default function LiveRoom({ roomId, userId, userName, role, onClose }: Li
         s.on('new_message', (msg: Message) => setMessages(prev => [...prev, msg]));
         s.on('online_users', (count: number) => setOnlineCount(count));
 
-        // ── WebRTC events ──────────────────────────────────────────────────────
-        s.on('incoming_call', ({ from, callerName }: { from: string; callerName: string }) => {
-            setIncomingFrom({ id: from, name: callerName });
-            setCallState('ringing');
-            setView('video');
+        // Poll events
+        s.on('poll_started', (poll: any) => { setCurrentPoll(poll); setMyVote(null); setPollResults({ A: 0, B: 0, C: 0, D: 0 }); setActiveTab('poll'); });
+        s.on('poll_stopped', () => setCurrentPoll(null));
+        s.on('new_vote', ({ option }: any) => {
+            if (role === 'admin') setPollResults(prev => ({ ...prev, [option]: (prev[option] || 0) + 1 }));
         });
-        s.on('call_accepted', ({ by }: { by: string }) => {
-            remoteSocketId.current = by;
-            startCall(s, by, true);
-        });
-        s.on('call_rejected', () => { setCallState('idle'); alert('Call rejected'); });
+
+        // WebRTC
+        s.on('incoming_call', ({ from, callerName }: any) => { setIncomingFrom({ id: from, name: callerName }); setCallState('ringing'); });
+        s.on('call_accepted', ({ by }: any) => { remoteSocketId.current = by; startCall(s, by, true); });
+        s.on('call_rejected', () => { setCallState('idle'); alert('Teacher is busy'); });
         s.on('call_ended', () => endCall());
+        s.on('webrtc_offer', async ({ offer, from }: any) => { remoteSocketId.current = from; await handleOffer(s, offer, from); });
+        s.on('webrtc_answer', async ({ answer }: any) => { await peerRef.current?.setRemoteDescription(new RTCSessionDescription(answer)); });
+        s.on('webrtc_ice', async ({ candidate }: any) => { try { await peerRef.current?.addIceCandidate(new RTCIceCandidate(candidate)); } catch { } });
 
-        s.on('webrtc_offer', async ({ offer, from }: { offer: RTCSessionDescriptionInit; from: string }) => {
-            remoteSocketId.current = from;
-            await handleOffer(s, offer, from);
-        });
-        s.on('webrtc_answer', async ({ answer }: { answer: RTCSessionDescriptionInit }) => {
-            await peerRef.current?.setRemoteDescription(new RTCSessionDescription(answer));
-        });
-        s.on('webrtc_ice', async ({ candidate }: { candidate: RTCIceCandidateInit }) => {
-            try { await peerRef.current?.addIceCandidate(new RTCIceCandidate(candidate)); } catch { }
-        });
-
-        // ── Proctoring alerts (admin sees these) ───────────────────────────────
         s.on('proctor_alert', ({ event, userName: uName, time }: any) => {
-            const msg = `⚠️ ${uName}: ${event === 'TAB_SWITCH' ? 'Switched tabs' : event} at ${new Date(time).toLocaleTimeString()}`;
+            const msg = `⚠️ ${uName}: ${event} at ${new Date(time).toLocaleTimeString()}`;
             setProctorAlerts(prev => [msg, ...prev].slice(0, 20));
         });
 
         return () => { s.disconnect(); endCall(); };
     }, [roomId, userId, userName, role]);
 
-    // ── Auto-scroll chat ───────────────────────────────────────────────────────
-    useEffect(() => {
-        chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages]);
+    useEffect(() => { chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-    // ── Get local camera/mic stream ────────────────────────────────────────────
     const getLocalStream = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -103,35 +96,22 @@ export default function LiveRoom({ roomId, userId, userName, role, onClose }: Li
             if (localVideoRef.current) localVideoRef.current.srcObject = stream;
             setCameraOn(true);
             return stream;
-        } catch (e) {
-            alert('Camera/microphone access denied. Please allow camera permissions.');
-            return null;
-        }
+        } catch { return null; }
     };
 
-    // ── Create peer connection ────────────────────────────────────────────────
     const createPeer = (s: Socket) => {
         const pc = new RTCPeerConnection(ICE_SERVERS);
-        pc.onicecandidate = (e) => {
-            if (e.candidate && remoteSocketId.current) {
-                s.emit('webrtc_ice', { candidate: e.candidate, to: remoteSocketId.current });
-            }
-        };
-        pc.ontrack = (e) => {
-            if (remoteVideoRef.current) remoteVideoRef.current.srcObject = e.streams[0];
-            setCallState('connected');
-        };
+        pc.onicecandidate = (e) => { if (e.candidate && remoteSocketId.current) s.emit('webrtc_ice', { candidate: e.candidate, to: remoteSocketId.current }); };
+        pc.ontrack = (e) => { if (remoteVideoRef.current) remoteVideoRef.current.srcObject = e.streams[0]; setCallState('connected'); };
         return pc;
     };
 
-    // ── Initiate call (called when accepted) ───────────────────────────────────
     const startCall = async (s: Socket, targetId: string, isInitiator: boolean) => {
         const stream = await getLocalStream();
         if (!stream) return;
         const pc = createPeer(s);
         peerRef.current = pc;
         stream.getTracks().forEach(t => pc.addTrack(t, stream));
-
         if (isInitiator) {
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
@@ -139,7 +119,6 @@ export default function LiveRoom({ roomId, userId, userName, role, onClose }: Li
         }
     };
 
-    // ── Handle incoming offer ────────────────────────────────────────────────
     const handleOffer = async (s: Socket, offer: RTCSessionDescriptionInit, from: string) => {
         const stream = await getLocalStream();
         if (!stream) return;
@@ -153,28 +132,14 @@ export default function LiveRoom({ roomId, userId, userName, role, onClose }: Li
         setCallState('connected');
     };
 
-    // ── End call ─────────────────────────────────────────────────────────────
     const endCall = useCallback(() => {
-        peerRef.current?.close();
-        peerRef.current = null;
-        localStreamRef.current?.getTracks().forEach(t => t.stop());
-        localStreamRef.current = null;
+        peerRef.current?.close(); peerRef.current = null;
+        localStreamRef.current?.getTracks().forEach(t => t.stop()); localStreamRef.current = null;
         if (localVideoRef.current) localVideoRef.current.srcObject = null;
         if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-        setCameraOn(false);
-        setCallState('idle');
-        setIncomingFrom(null);
+        setCameraOn(false); setCallState('idle'); setIncomingFrom(null);
     }, []);
 
-    // ── Initiate outgoing call ─────────────────────────────────────────────
-    const initiateCall = () => {
-        if (!socket) return;
-        setCallState('calling');
-        setView('video');
-        socket.emit('call_request', { roomId, callerName: userName });
-    };
-
-    // ── Accept incoming call ──────────────────────────────────────────────
     const acceptCall = () => {
         if (!socket || !incomingFrom) return;
         socket.emit('call_accept', { to: incomingFrom.id });
@@ -182,7 +147,6 @@ export default function LiveRoom({ roomId, userId, userName, role, onClose }: Li
         setIncomingFrom(null);
     };
 
-    // ── Reject call ──────────────────────────────────────────────────────
     const rejectCall = () => {
         if (!socket || !incomingFrom) return;
         socket.emit('call_reject', { to: incomingFrom.id });
@@ -190,13 +154,6 @@ export default function LiveRoom({ roomId, userId, userName, role, onClose }: Li
         setIncomingFrom(null);
     };
 
-    // ── Hang up ───────────────────────────────────────────────────────────
-    const hangUp = () => {
-        socket?.emit('call_end', { roomId });
-        endCall();
-    };
-
-    // ── Toggle mic ────────────────────────────────────────────────────────
     const toggleMic = () => {
         if (localStreamRef.current) {
             localStreamRef.current.getAudioTracks().forEach(t => { t.enabled = !t.enabled; });
@@ -204,7 +161,6 @@ export default function LiveRoom({ roomId, userId, userName, role, onClose }: Li
         }
     };
 
-    // ── Send chat message ──────────────────────────────────────────────────
     const sendMessage = (e: React.FormEvent) => {
         e.preventDefault();
         if (!input.trim() || !socket) return;
@@ -212,167 +168,169 @@ export default function LiveRoom({ roomId, userId, userName, role, onClose }: Li
         setInput('');
     };
 
-    const timeStr = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const startPoll = () => { socket?.emit('start_poll', { roomId, question: 'What will be the output?' }); };
+    const vote = (opt: string) => { if (!myVote && socket) { setMyVote(opt); socket.emit('submit_vote', { roomId, option: opt, userId, userName }); } };
 
     return (
-        <div className="flex flex-col h-full min-h-0 bg-[#111827] border border-[#1e2d45] rounded-2xl overflow-hidden shadow-2xl">
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e2d45] bg-[#0d1117] shrink-0">
-                <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                    <span className="font-bold text-white text-sm">Live Room</span>
-                    {role === 'admin' && (
-                        <span className="text-xs text-slate-500">{onlineCount} student{onlineCount !== 1 ? 's' : ''} online</span>
-                    )}
+        <div className="fixed inset-0 z-50 bg-[#0a0e1a] flex flex-col md:flex-row overflow-hidden font-sans">
+            <div className="flex-1 flex flex-col min-h-0 relative border-r border-[#1e2d45]">
+                <div className="h-14 flex items-center justify-between px-6 bg-[#111827] border-b border-[#1e2d45]">
+                    <div className="flex items-center gap-3">
+                        <img src="/logo.png" className="w-8 h-8 rounded-lg" alt="" />
+                        <div>
+                            <p className="text-white font-black text-sm tracking-tight leading-none uppercase">C++, OOPS, OS & DBMS : BARC PRACTICE</p>
+                            <p className="text-[10px] text-amber-500 font-bold tracking-widest mt-0.5">LECTURE 21 • LIVE NOW</p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-1.5 bg-red-500/10 px-3 py-1 rounded-full border border-red-500/20">
+                            <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></span>
+                            <span className="text-[10px] font-black text-red-500 uppercase tracking-widest">{onlineCount} WATCHING</span>
+                        </div>
+                        <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full transition-colors">
+                            <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                    </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    <button onClick={() => setView('chat')}
-                        className={`text-xs px-3 py-1.5 rounded-lg transition-all ${view === 'chat' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'text-slate-500 hover:text-white'}`}>
-                        💬 Chat
-                    </button>
-                    <button onClick={() => setView('video')}
-                        className={`text-xs px-3 py-1.5 rounded-lg transition-all ${view === 'video' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'text-slate-500 hover:text-white'}`}>
-                        📹 Video
-                    </button>
-                    {onClose && (
-                        <button onClick={onClose} className="text-slate-500 hover:text-white text-lg ml-1">×</button>
+
+                <div className="flex-1 overflow-y-auto p-12 bg-[#0d1117] flex flex-col items-center justify-center text-center">
+                    <div className="max-w-3xl w-full bg-[#111827] border border-[#1e2d45] rounded-3xl p-10 shadow-2xl relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 p-4 opacity-5">
+                            <img src="/logo.png" className="w-24 h-24 rotate-12" alt="" />
+                        </div>
+                        <div className="text-left">
+                            <p className="text-amber-500 font-black text-xs uppercase tracking-[0.3em] mb-4">Challenge #21</p>
+                            <h3 className="text-2xl font-black text-white mb-8 leading-tight">What will be the output of the following C++ code?</h3>
+                            <div className="bg-[#0a0e1a] rounded-2xl p-6 font-mono text-sm text-slate-300 border border-white/5 mb-10 overflow-x-auto">
+                                <pre>{`#include <iostream>
+using namespace std;
+
+int main() {
+    int x = 10;
+    cout << (x > 5 ? 100 : 200);
+    return 0;
+}`}</pre>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                {['A', 'B', 'C', 'D'].map(opt => (
+                                    <button key={opt} onClick={() => vote(opt)}
+                                        className={`p-4 rounded-xl border-2 font-black transition-all flex items-center justify-between group
+                                        ${myVote === opt ? 'bg-amber-500 border-amber-500 text-black shadow-lg shadow-amber-500/20' : 'bg-[#1e2d45]/50 border-[#1e2d45] text-slate-400 hover:border-amber-500/50 hover:text-white'}`}>
+                                        <span className={`w-8 h-8 rounded-lg flex items-center justify-center border-2 ${myVote === opt ? 'bg-black/10 border-black/20' : 'bg-white/5 border-white/10 group-hover:bg-amber-500/10'}`}>{opt}</span>
+                                        <span className="text-lg">{opt === 'A' ? '100' : opt === 'B' ? '200' : opt === 'C' ? '10' : 'Error'}</span>
+                                        <div className="w-8 shrink-0"></div>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="h-16 flex items-center justify-between px-8 bg-[#111827] border-t border-[#1e2d45]">
+                    <div className="flex gap-4">
+                        <button className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-white transition-colors">
+                            <span className="text-lg">📜</span> NOTES
+                        </button>
+                    </div>
+                    {role === 'admin' && (
+                        <div className="flex gap-3">
+                            <button onClick={startPoll} className="bg-amber-500 hover:bg-amber-400 text-black px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">START POLL</button>
+                            <button onClick={() => socket?.emit('stop_poll', { roomId })} className="bg-slate-700 hover:bg-slate-600 text-white px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">RESET</button>
+                        </div>
                     )}
                 </div>
             </div>
 
-            {/* Incoming call banner */}
-            {callState === 'ringing' && incomingFrom && (
-                <div className="bg-green-500/20 border-b border-green-500/30 px-4 py-3 flex items-center justify-between animate-pulse">
-                    <div className="flex items-center gap-2">
-                        <span className="text-xl">📞</span>
-                        <span className="text-green-300 text-sm font-medium">{incomingFrom.name} is calling…</span>
-                    </div>
-                    <div className="flex gap-2">
-                        <button onClick={acceptCall} className="bg-green-500 hover:bg-green-400 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all">✓ Accept</button>
-                        <button onClick={rejectCall} className="bg-red-500 hover:bg-red-400 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all">✗ Decline</button>
-                    </div>
+            <div className="w-full md:w-96 flex flex-col bg-[#0d1523] shrink-0">
+                <div className="aspect-video bg-black relative border-b border-[#1e2d45] overflow-hidden">
+                    <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                    {callState !== 'connected' && (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center">
+                            <img src={avatar('Rahul')} className="w-16 h-16 rounded-full border-2 border-amber-500 mb-2" alt="" />
+                            <p className="text-white font-bold text-xs uppercase tracking-widest">TEACHER OFFLINE</p>
+                        </div>
+                    )}
+                    <video ref={localVideoRef} autoPlay playsInline muted
+                        className="absolute bottom-3 right-3 w-24 h-24 object-cover rounded-2xl border-2 border-amber-500/50 shadow-2xl"
+                        style={{ display: cameraOn ? 'block' : 'none' }} />
                 </div>
-            )}
 
-            {/* CHAT VIEW */}
-            {view === 'chat' && (
-                <>
-                    <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
-                        {messages.length === 0 && (
-                            <div className="flex flex-col items-center justify-center h-full opacity-40">
-                                <span className="text-4xl mb-2">💬</span>
-                                <p className="text-slate-400 text-sm">No messages yet. Say hello!</p>
-                            </div>
-                        )}
-                        {messages.map((msg) => {
-                            const isMine = msg.senderName === userName;
-                            return (
-                                <div key={msg.id} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
-                                    {!isMine && (
-                                        <span className="text-xs text-slate-500 mb-1 px-1">
-                                            {msg.role === 'admin' ? '👨‍🏫' : '🎓'} {msg.senderName}
-                                        </span>
-                                    )}
-                                    <div className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm leading-relaxed break-words ${isMine
-                                            ? 'bg-amber-500 text-black rounded-br-sm'
-                                            : msg.role === 'admin'
-                                                ? 'bg-blue-500/20 border border-blue-500/30 text-slate-200 rounded-bl-sm'
-                                                : 'bg-[#1e2d45] text-slate-200 rounded-bl-sm'
-                                        }`}>
-                                        {msg.text}
-                                    </div>
-                                    <span className="text-xs text-slate-600 mt-1 px-1">{timeStr(msg.timestamp)}</span>
-                                </div>
-                            );
-                        })}
-                        <div ref={chatBottomRef} />
-                    </div>
-
-                    <form onSubmit={sendMessage} className="p-3 border-t border-[#1e2d45] flex gap-2 shrink-0">
-                        <input
-                            className="flex-1 bg-[#0a0e1a] border border-[#1e2d45] rounded-xl px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-amber-500/50 transition-all"
-                            placeholder="Type a message…"
-                            value={input}
-                            onChange={e => setInput(e.target.value)}
-                        />
-                        <button type="submit" disabled={!input.trim()}
-                            className="bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-black p-2 rounded-xl transition-all">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                            </svg>
+                <div className="flex bg-[#111827] border-b border-[#1e2d45]">
+                    {['chat', 'doubts', 'results'].map(t => (
+                        <button key={t} onClick={() => setActiveTab(t as any)}
+                            className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === t ? 'text-amber-500 border-b-2 border-amber-500' : 'text-slate-500 hover:text-slate-300'}`}>
+                            {t}
                         </button>
-                    </form>
-                </>
-            )}
-
-            {/* VIDEO VIEW */}
-            {view === 'video' && (
-                <div className="flex-1 flex flex-col min-h-0">
-                    {/* Videos */}
-                    <div className="flex-1 relative bg-black min-h-0">
-                        {/* Remote video (full) */}
-                        <video ref={remoteVideoRef} autoPlay playsInline
-                            className="w-full h-full object-cover"
-                            style={{ display: callState === 'connected' ? 'block' : 'none' }}
-                        />
-                        {callState !== 'connected' && (
-                            <div className="absolute inset-0 flex flex-col items-center justify-center text-white">
-                                <span className="text-6xl mb-4">📹</span>
-                                {callState === 'idle' && (
-                                    <p className="text-slate-400 text-sm">Start a video call with {role === 'admin' ? 'student' : 'your teacher'}</p>
-                                )}
-                                {callState === 'calling' && (
-                                    <div className="flex flex-col items-center gap-2">
-                                        <div className="w-6 h-6 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
-                                        <p className="text-amber-400 text-sm">Calling… waiting for answer</p>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Local video (PiP top-right) */}
-                        <video ref={localVideoRef} autoPlay playsInline muted
-                            className="absolute bottom-3 right-3 w-28 h-20 object-cover rounded-xl border-2 border-amber-500/40 shadow-lg"
-                            style={{ display: cameraOn ? 'block' : 'none' }}
-                        />
-                        {cameraOn && (
-                            <div className="absolute bottom-3 left-3 bg-black/60 text-white text-xs px-2 py-1 rounded-lg">{userName} (You)</div>
-                        )}
-                    </div>
-
-                    {/* Controls */}
-                    <div className="p-4 border-t border-[#1e2d45] flex items-center justify-center gap-3 bg-[#0d1117] shrink-0">
-                        {callState === 'idle' && (
-                            <button onClick={initiateCall}
-                                className="bg-green-500 hover:bg-green-400 text-white px-6 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 transition-all shadow-lg">
-                                <span>📞</span> Start Video Call
-                            </button>
-                        )}
-                        {(callState === 'calling' || callState === 'connected') && (
-                            <>
-                                <button onClick={toggleMic}
-                                    className={`p-3 rounded-full transition-all text-lg ${micOn ? 'bg-[#1e2d45] text-white' : 'bg-red-500 text-white'}`}>
-                                    {micOn ? '🎙️' : '🔇'}
-                                </button>
-                                <button onClick={hangUp}
-                                    className="bg-red-500 hover:bg-red-400 text-white px-8 py-3 rounded-full font-bold flex items-center gap-2 transition-all">
-                                    <span>📵</span> End Call
-                                </button>
-                            </>
-                        )}
-                    </div>
-                </div>
-            )}
-
-            {/* Admin: Proctoring Alerts Panel */}
-            {role === 'admin' && proctorAlerts.length > 0 && (
-                <div className="border-t border-red-500/20 bg-red-500/5 p-3 max-h-28 overflow-y-auto shrink-0">
-                    <p className="text-xs text-red-400 font-bold mb-1.5">⚠️ Proctoring Alerts</p>
-                    {proctorAlerts.map((a, i) => (
-                        <p key={i} className="text-xs text-red-300">{a}</p>
                     ))}
                 </div>
-            )}
+
+                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                    {activeTab === 'chat' && (
+                        <>
+                            {messages.map(msg => {
+                                const isMine = msg.senderName === userName;
+                                const isAdmin = msg.role === 'admin';
+                                return (
+                                    <div key={msg.id} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
+                                        <div className="flex items-center gap-1.5 mb-1 px-1">
+                                            {isAdmin && <span className="bg-amber-500 text-black text-[8px] font-black px-1.5 rounded uppercase leading-none py-0.5">TEACHER</span>}
+                                            <span className="text-[10px] font-bold text-slate-500">{msg.senderName}</span>
+                                        </div>
+                                        <div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm leading-relaxed border shadow-sm ${isMine
+                                            ? 'bg-amber-500 text-black border-amber-400/20 rounded-tr-none'
+                                            : isAdmin ? 'bg-amber-500/10 border-amber-500/20 text-white rounded-tl-none' : 'bg-[#1e2d45] border-white/5 text-slate-200 rounded-tl-none'}`}>
+                                            {msg.text}
+                                        </div>
+                                        <span className="text-[9px] text-slate-600 mt-1 uppercase font-bold tracking-tighter">{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                    </div>
+                                );
+                            })}
+                            <div ref={chatBottomRef} />
+                        </>
+                    )}
+
+                    {activeTab === 'results' && role === 'admin' && (
+                        <div className="space-y-4 pt-4">
+                            <h4 className="text-white font-black text-xs uppercase tracking-widest mb-6">Real-time voting</h4>
+                            {Object.entries(pollResults).map(([opt, count]) => {
+                                const total = Object.values(pollResults).reduce((a, b) => a + b, 0) || 1;
+                                const pct = (count / total) * 100;
+                                return (
+                                    <div key={opt} className="space-y-2">
+                                        <div className="flex justify-between text-xs font-bold uppercase tracking-widest">
+                                            <span className="text-slate-400">Option {opt}</span>
+                                            <span className="text-amber-500">{count} votes</span>
+                                        </div>
+                                        <div className="h-2 bg-white/5 rounded-full overflow-hidden border border-white/5">
+                                            <div className="h-full bg-amber-500 transition-all duration-500" style={{ width: `${pct}%` }}></div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+
+                <div className="p-4 border-t border-[#1e2d45] bg-[#111827]">
+                    {incomingFrom && (
+                        <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-3 mb-3 flex items-center justify-between animate-pulse">
+                            <span className="text-[9px] font-black text-green-400 uppercase tracking-widest">INCOMING CALL...</span>
+                            <div className="flex gap-2">
+                                <button onClick={acceptCall} className="bg-green-500 text-white w-6 h-6 rounded-lg flex items-center justify-center text-xs">✓</button>
+                                <button onClick={rejectCall} className="bg-red-500 text-white w-6 h-6 rounded-lg flex items-center justify-center text-xs">×</button>
+                            </div>
+                        </div>
+                    )}
+                    <form onSubmit={sendMessage} className="flex gap-2">
+                        <input className="flex-1 bg-[#0a0e1a] border border-[#1e2d45] rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-600 focus:border-amber-500/50 outline-none transition-all"
+                            placeholder="Type reaching out..." value={input} onChange={e => setInput(e.target.value)} />
+                        <button type="submit" disabled={!input.trim()} className="bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-black p-2.5 rounded-xl transition-all h-9 flex items-center justify-center">
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" /></svg>
+                        </button>
+                    </form>
+                </div>
+            </div>
         </div>
     );
 }

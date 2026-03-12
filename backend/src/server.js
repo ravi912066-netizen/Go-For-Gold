@@ -128,6 +128,21 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('call_ended');
   });
 
+  // ── Polls ─────────────────────────────────────────────────────────────
+  socket.on('start_poll', ({ roomId, question }) => {
+    // Basic poll: Question + A, B, C, D
+    io.to(roomId).emit('poll_started', { question, startTime: new Date().toISOString() });
+  });
+
+  socket.on('stop_poll', ({ roomId }) => {
+    io.to(roomId).emit('poll_stopped');
+  });
+
+  socket.on('submit_vote', ({ roomId, option, userId, userName }) => {
+    // Broadcast vote to admin so they can see results live
+    socket.to(roomId).emit('new_vote', { option, userId, userName });
+  });
+
   // ── Proctoring events ───────────────────────────────────────────────────
   socket.on('proctor_event', ({ roomId, event, userId, userName }) => {
     // Forward suspicious activity to admin/teacher

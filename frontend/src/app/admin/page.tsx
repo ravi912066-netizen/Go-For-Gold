@@ -23,7 +23,7 @@ export default function AdminDashboard() {
     // Create course form
     const [cForm, setCForm] = useState({ title: '', description: '', icon: '📚' });
     // Assignment form
-    const [aForm, setAForm] = useState({ title: '', courseId: '', description: '', deadline: '', difficulty: 'Medium', tags: '' });
+    const [aForm, setAForm] = useState({ title: '', courseId: '', description: '', deadline: '', difficulty: 'Medium', tags: '', externalUrl: '', isProctored: false, reward: '100 XP' });
     const [showChat, setShowChat] = useState(false);
     const [user, setUser] = useState<any>(null);
 
@@ -76,7 +76,11 @@ export default function AdminDashboard() {
 
     const handleCreateAssignment = async (e: React.FormEvent) => {
         e.preventDefault(); setSaving(true);
-        try { await API.post('/assignments', { ...aForm, courseId: parseInt(aForm.courseId) }); setMsg('✓ Assignment created!'); setAForm({ title: '', courseId: '', description: '', deadline: '', difficulty: 'Medium', tags: '' }); }
+        try {
+            await API.post('/assignments', { ...aForm, courseId: parseInt(aForm.courseId) });
+            setMsg('✓ Assignment created!');
+            setAForm({ title: '', courseId: '', description: '', deadline: '', difficulty: 'Medium', tags: '', externalUrl: '', isProctored: false, reward: '100 XP' });
+        }
         catch { setMsg('Error creating assignment'); } finally { setSaving(false); }
     };
 
@@ -258,8 +262,20 @@ export default function AdminDashboard() {
                                             <select className="input-field" value={aForm.difficulty} onChange={e => setAForm(f => ({ ...f, difficulty: e.target.value }))}>
                                                 <option>Easy</option><option>Medium</option><option>Hard</option></select></div>
                                     </div>
-                                    <div><label className="text-xs text-slate-400 mb-1 block">Tags</label>
-                                        <input className="input-field" placeholder="debug, arrays" value={aForm.tags} onChange={e => setAForm(f => ({ ...f, tags: e.target.value }))} /></div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div><label className="text-xs text-slate-400 mb-1 block">Tags</label>
+                                            <input className="input-field" placeholder="debug, arrays" value={aForm.tags} onChange={e => setAForm(f => ({ ...f, tags: e.target.value }))} /></div>
+                                        <div><label className="text-xs text-slate-400 mb-1 block">Reward (Paisa/XP)</label>
+                                            <input className="input-field" placeholder="₹50 or 100 XP" value={aForm.reward} onChange={e => setAForm(f => ({ ...f, reward: e.target.value }))} /></div>
+                                    </div>
+
+                                    <div><label className="text-xs text-slate-400 mb-1 block">External URL (Google Sheet / PDF)</label>
+                                        <input className="input-field" placeholder="https://docs.google.com/spreadsheets/..." value={aForm.externalUrl} onChange={e => setAForm(f => ({ ...f, externalUrl: e.target.value }))} /></div>
+
+                                    <div className="flex items-center gap-2 py-2">
+                                        <input type="checkbox" id="isProctored" checked={aForm.isProctored} onChange={e => setAForm(f => ({ ...f, isProctored: e.target.checked }))} className="accent-amber-500" />
+                                        <label htmlFor="isProctored" className="text-sm text-slate-300">Enable Proctoring (Strict Mode)</label>
+                                    </div>
 
                                     {/* Upload options */}
                                     <div className="border border-dashed border-[#1e2d45] rounded-xl p-6 text-center hover:border-amber-500/30 transition-colors cursor-pointer">
